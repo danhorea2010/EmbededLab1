@@ -1,4 +1,4 @@
-// Actors: - Person
+//Actors:      - Person
 //              - Faucet
 // state   - initial state (off)
 //            - on
@@ -13,104 +13,73 @@
 // 1. If button is pressed -> faucet will be turned on
 // 2. if hands are dirty -> button will be pressed
 // 3. if hands are not dirty -> faucet is off
-
 bool hands_dirty = true;
-bool initialised = false;
+bool faucet_active = true;
 
-byte seconds_count = 0;
-byte hand_dirtiness_counter = 10;
-byte water_time_seconds = 2;
+// Foloseam byte, deci <= 0 == 255...
+short seconds_count = 0;
+short hand_dirtiness_counter = 10;
+short water_time_seconds = 11;
 
-mtype:faucet_state_types = {open, closed};
-mtype:pushing_state_types = {pushingButton, notPushingButton};
+mtype:faucet_state_types = {open, cleaned};
 
-chan binary_channel = [0] of {mtype:faucet_state_types};
-chan push_state         = [0] of {mtype:pushing_state_types};
+chan binary_channel = [1] of {mtype:faucet_state_types};
 
 active proctype Person() {
+washingHands: atomic {
+  printf("initing\n");
 
-
-    init123: atomic {
-        if 
-        :: !initialised ->  atomic {
-          push_state!pushingButton;
-
-push_state!pushingButton;
-push_state!pushingButton;
-push_state!pushingButton;
-push_state!pushingButton;
-            initialised = true;
+  if
+    :: hands_dirty == 1 && faucet_active == true -> {
+      if
+        :: binary_channel?cleaned-> {
+          if
+            :: hand_dirtiness_counter <= 0 && hands_dirty == 1 -> {
+              hands_dirty = false;
+            }
+            :: hands_dirty -> {
+              goto hands_cleaned;
+            }
+          fi
+          goto end;
         }
-        fi
+      fi
     }
+  fi
 
+  hands_cleaned : atomic {
+    if
+      :: hands_dirty == 1 && faucet_active -> {
+        goto washingHands;
+      }
+         fi
+  }
 
-	// press button
-             // wait for water to turn off
-             // while hands are dirty push button
-    washingHands:  {
-        // If hands are dirty
-        //   * if faucet is off -> push button
-        //   * if faucet is on  -> hash hands (set hands_dirty to false)
-        if 
-        :: hands_dirty ->  {
+end:
 
-            binary_channel?closed ->  {
-                push_state!pushingButton;
-
-               
-
-            };
-        }
-        fi;
-
-        if
-        :: hand_dirtiness_counter <= 0 -> atomic {
-            hands_dirty = false;
-
-        };
-        fi;
-
-	goto washingHands;
-    }
-	
+}
 
 }
 
 active proctype Faucet() {
-	// wait for button signal -> change state to on
-	// after timer ran out -> change state to off
+  atomic { seconds_count = water_time_seconds;};
 
-	openingFaucet:  atomic {
-					printf("test23\n");
-				push_state?pushingButton -> {
+watering:{
 
-					binary_channel!open;
-					printf("test\n");
-					push_state!notPushingButton;
+  if
+    :: seconds_count > 0 && hands_dirty == 1 -> atomic {
+      seconds_count = seconds_count - 1;
+      hand_dirtiness_counter = hand_dirtiness_counter - 1;
+      binary_channel!cleaned;
+      goto watering;
+    }
+    :: else -> atomic {
+      faucet_active = false;
 
-					seconds_count = water_time_seconds;
-					goto watering;
-			   };
-
-
-	watering:  {
-	            	if 
-		            :: seconds_count > 0 -> atomic {
-                        seconds_count = seconds_count - 1;
-                        hand_dirtiness_counter = hand_dirtiness_counter - 1;
-printf("%d\n",hand_dirtiness_counter);
-                        goto watering;
-                    }
-                    fi;
-                    if 
-                    :: seconds_count <= 0 -> atomic {
-		printf("Closed channel" );
-                        binary_channel!closed;
-                    } 
-                    fi;
-	}
-
-}
+    }
+  fi;
 }
 
+
+
+}
